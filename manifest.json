@@ -1,0 +1,39 @@
+{
+  "plugin_id":             "chronicle.plugin.fanedit",
+  "name":                  "FanEdit (IFDB)",
+  "version":               "1.0.0",
+  "author":                "Chronicle Contributors",
+  "description":           "Fetches fanedit metadata from the Internet Fan Edit Database (fanedit.org). Requires a registered fanedit.org account. Please use responsibly — a minimum 1-second delay between requests is enforced.",
+  "min_chronicle_version": "0.1.0",
+  "entry_type":            "Chronicle.Plugin.FanEdit.FanEditMetadataProvider",
+  "iconUrl":               "https://www.fanedit.org/favicon.ico",
+  "brandColorLight":       "#8B1A1A",
+  "brandColorDark":        "#C0392B",
+  "fixMatchHint":          "Enter a fanedit.org URL (e.g. https://www.fanedit.org/my-edit/) or a bare IFDB numeric ID",
+  "background_tasks": [
+    {
+      "task_id":         "fetch-missing-metadata",
+      "display_name":    "Fetch Missing Metadata",
+      "description":     "Looks up IFDB metadata for fan edits that don't have it yet.",
+      "default_cron":    null,
+      "default_enabled": false,
+      "schedulable":     false,
+      "run_confirmation": {
+        "title":   "Fetch fan edit metadata?",
+        "message": "fanedit.org is a small community site maintained by volunteers. This task makes one HTTP request per fan edit with a minimum 1-second delay — on a large library this will take a long time. Please run this sparingly, not more than a few times per week."
+      }
+    },
+    {
+      "task_id":         "resync-all-metadata",
+      "display_name":    "Re-sync All Metadata",
+      "description":     "Re-fetches IFDB metadata for all fan edits to pick up updated descriptions, ratings, and images.",
+      "default_cron":    null,
+      "default_enabled": false,
+      "schedulable":     false,
+      "run_confirmation": {
+        "title":   "Re-sync all fan edit metadata?",
+        "message": "This will re-fetch IFDB metadata for every fan edit in your library. fanedit.org is a small community site — each request has a minimum 1-second delay. On a large library this will take a very long time. Please use this sparingly."
+      }
+    }
+  ]
+}
