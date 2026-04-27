@@ -24,14 +24,22 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
 
     // ── Identity ──────────────────────────────────────────────────────────
     public string PluginId => "chronicle.plugin.fanedit";
-    public string Name     => "FanEdit (IFDB)";
+    public string Name     => "FanEdit";
     public string Version  => "1.0.0";
     public string Author   => "Chronicle Contributors";
 
     // ── Capabilities ──────────────────────────────────────────────────────
     public MediaTypeSupport[] GetSupportedMediaTypes() =>
     [
-        new MediaTypeSupport { MediaTypeName = "fanedits" }
+        new MediaTypeSupport
+        {
+            MediaTypeName   = "fanedits",
+            DisplayName     = "Fan Edits",
+            HierarchyLevels = 1,
+            DefaultPriority = 10,
+            SupportedFields = ["title", "overview", "year", "poster_url", "backdrop_url",
+                               "runtime_minutes", "genres", "cast", "directors", "rating", "tags"],
+        },
     ];
 
     public PluginSettingsSchema GetSettingsSchema() => new()
