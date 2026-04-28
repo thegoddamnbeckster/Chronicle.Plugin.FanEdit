@@ -1,6 +1,6 @@
 {
   "plugin_id":             "chronicle.plugin.fanedit",
-  "name":                  "FanEdit (IFDB)",
+  "name":                  "FanEdit",
   "version":               "1.0.0",
   "author":                "Chronicle Contributors",
   "description":           "Fetches fanedit metadata from the Internet Fan Edit Database (fanedit.org). Requires a registered fanedit.org account. Please use responsibly — a minimum 1-second delay between requests is enforced.",
