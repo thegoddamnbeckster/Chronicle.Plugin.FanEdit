@@ -6,7 +6,7 @@
   "description":           "Fetches fanedit metadata from the Internet Fan Edit Database (fanedit.org). Requires a registered fanedit.org account. Please use responsibly — a minimum 1-second delay between requests is enforced.",
   "min_chronicle_version": "0.1.0",
   "entry_type":            "Chronicle.Plugin.FanEdit.FanEditMetadataProvider",
-  "iconUrl":               "https://www.fanedit.org/favicon.ico",
+  "iconUrl":               "data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAyNCAyNCc+PHJlY3Qgd2lkdGg9JzI0JyBoZWlnaHQ9JzI0JyByeD0nMycgZmlsbD0nI2MyNDEwYycvPjxwYXRoIGQ9J001IDhoMnYySDV6bTEyIDBoMnYyaC0yek01IDE0aDJ2Mkg1em0xMiAwaDJ2MmgtMnonIGZpbGw9J3doaXRlJyBvcGFjaXR5PScwLjYnLz48cGF0aCBkPSdNOCA2aDh2MTJIOHonIGZpbGw9J3doaXRlJyBvcGFjaXR5PScwLjknLz48cGF0aCBkPSdNMTAgOWg0TTEwIDEyaDRNMTAgMTVoMycgc3Ryb2tlPScjYzI0MTBjJyBzdHJva2Utd2lkdGg9JzEuMicgc3Ryb2tlLWxpbmVjYXA9J3JvdW5kJy8+PC9zdmc+",
   "brandColorLight":       "#8B1A1A",
   "brandColorDark":        "#C0392B",
   "fixMatchHint":          "Enter a fanedit.org URL (e.g. https://www.fanedit.org/my-edit/) or a bare IFDB numeric ID",
