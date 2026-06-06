@@ -246,36 +246,43 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
                 if (!resp.IsSuccessStatusCode) continue;
             }
 
-            var html    = await resp.Content.ReadAsStringAsync(ct);
-            var results = _scraper!.ParseSearchResults(html);
+            var html         = await resp.Content.ReadAsStringAsync(ct);
+            var canonicalUrl = FanEditScraper.GetCanonicalUrl(html);
 
             // JReviews redirects directly to the fan-edit detail page when a tag has
             // exactly one match (HttpClient follows the redirect transparently, so
             // resp.RequestMessage.RequestUri is still the original URL — use the
             // canonical <link> in the HTML to detect where we actually landed).
-            if (results.Count == 0)
+            // Check BEFORE ParseSearchResults because Strategy 2 (permalink links)
+            // returns noisy sidebar/nav results from the detail page that block this path.
+            bool redirectedToDetail =
+                !string.IsNullOrWhiteSpace(canonicalUrl) &&
+                !canonicalUrl!.Equals(url, StringComparison.OrdinalIgnoreCase) &&
+                !FanEditAuthService.IsSessionExpiredResponse(resp) &&
+                canonicalUrl.Contains("fanedit.org", StringComparison.OrdinalIgnoreCase);
+
+            List<FanEditSearchResult> results;
+            if (redirectedToDetail)
             {
-                var canonicalUrl = FanEditScraper.GetCanonicalUrl(html);
-                if (!string.IsNullOrWhiteSpace(canonicalUrl) &&
-                    !canonicalUrl.Equals(url, StringComparison.OrdinalIgnoreCase) &&
-                    !FanEditAuthService.IsSessionExpiredResponse(resp) &&
-                    canonicalUrl.Contains("fanedit.org", StringComparison.OrdinalIgnoreCase))
+                try
                 {
-                    try
+                    var entry = _scraper!.ParseDetailPage(html, canonicalUrl!);
+                    results = [new FanEditSearchResult
                     {
-                        var entry = _scraper!.ParseDetailPage(html, canonicalUrl);
-                        results = [new FanEditSearchResult
-                        {
-                            Title        = entry.Title ?? string.Empty,
-                            Year         = entry.Year,
-                            ThumbnailUrl = entry.PosterUrl,
-                            Url          = canonicalUrl,
-                        }];
-                    }
-                    catch { /* ignore — page wasn't parseable as a detail page */ }
+                        Title        = entry.Title ?? string.Empty,
+                        Year         = entry.Year,
+                        ThumbnailUrl = entry.PosterUrl,
+                        Url          = canonicalUrl!,
+                    }];
                 }
-                if (results.Count == 0) continue;
+                catch { results = []; }
             }
+            else
+            {
+                results = _scraper!.ParseSearchResults(html);
+            }
+
+            if (results.Count == 0) continue;
 
             foreach (var r in results)
             {
