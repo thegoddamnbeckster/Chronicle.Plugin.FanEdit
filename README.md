@@ -428,44 +428,46 @@ Chronicle.Plugin.FanEdit/
 ├── Chronicle.Plugin.FanEdit.csproj
 ├── README.md
 ├── manifest.json
-├── FanEditPlugin.cs
-├── FanEditAuthService.cs
-├── FanEditScraper.cs
-├── FanEditRateLimiter.cs
-└── Models/
-    ├── FanEditEntry.cs
-    ├── FanEditSearchResult.cs
-    └── FanEditTechSpecs.cs
+├── FanEditMetadataProvider.cs   # IMetadataProvider — search, get by ID, Fix Match, auth
+├── FanEditAuthService.cs        # Login handshake and session cookie management
+├── FanEditScraper.cs            # HTML parsing (search results + detail pages)
+├── FanEditRateLimiter.cs        # Per-instance rate limiting (SemaphoreSlim + Stopwatch)
+└── Models/                      # Data transfer objects for scraped data
 ```
 
 ---
 
 ## Building & Packaging
 
+Both repositories must be cloned as siblings for the project reference to resolve:
+
+```
+<base>\
+  Chronicle\
+  Chronicle.Plugin.FanEdit\
+```
+
+```powershell
+dotnet build -c Release
+```
+
+Deploy to Chronicle:
+
+```powershell
+$pluginDir = "..\Chronicle\src\Chronicle.API\plugins\chronicle.plugin.fanedit"
+New-Item -ItemType Directory -Force $pluginDir
+dotnet build -c Release
+Copy-Item "bin\Release\net9.0\*.dll" $pluginDir
+Copy-Item "manifest.json"           $pluginDir
+```
+
+> **Important:** `Chronicle.Plugins.dll` must **not** be in the plugin directory — Chronicle provides it. The `.csproj` sets `<Private>false</Private>` on the Chronicle.Plugins project reference to ensure this.
+
+The project references `Chronicle.Plugins` as:
+
 ```xml
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
-    <AssemblyName>Chronicle.Plugin.FanEdit</AssemblyName>
-    <RootNamespace>Chronicle.Plugin.FanEdit</RootNamespace>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-  </PropertyGroup>
-  <ItemGroup>
-    <Reference Include="Chronicle.Plugins">
-      <HintPath>..\Chronicle.Plugins.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-  </ItemGroup>
-  <ItemGroup>
-    <PackageReference Include="HtmlAgilityPack" Version="1.11.*" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Update="manifest.json">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
-</Project>
+<ProjectReference Include="..\Chronicle\src\Chronicle.Plugins\Chronicle.Plugins.csproj"
+                  Private="false" ExcludeAssets="runtime" />
 ```
 
 ---
