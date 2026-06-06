@@ -1,0 +1,43 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v9.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v9.0": {
+      "Chronicle.Plugin.FanEdit/1.0.0": {
+        "dependencies": {
+          "Chronicle.Core": "1.0.0",
+          "Chronicle.Plugins": "1.0.0",
+          "HtmlAgilityPack": "1.11.74"
+        },
+        "runtime": {
+          "Chronicle.Plugin.FanEdit.dll": {}
+        }
+      },
+      "HtmlAgilityPack/1.11.74": {
+        "runtime": {
+          "lib/netstandard2.0/HtmlAgilityPack.dll": {
+            "assemblyVersion": "1.11.74.0",
+            "fileVersion": "1.11.74.0"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "Chronicle.Plugin.FanEdit/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "HtmlAgilityPack/1.11.74": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-q0wRGbegtr4sZXjCNoV3OeRLTOcTNJQKiO9etNVSKPoTo33unmSK8Ahg36C4jIg/Hd3aw8YnTQjtKpBy+wlOpg==",
+      "path": "htmlagilitypack/1.11.74",
+      "hashPath": "htmlagilitypack.1.11.74.nupkg.sha512"
+    }
+  }
+}

@@ -48,30 +48,25 @@ internal sealed class FanEditAuthService
             ["_wpnonce"]    = nonce ?? string.Empty,
         });
 
-        var loginResp = await _http.PostAsync(LoginUrl, form, ct);
+        await _http.PostAsync(LoginUrl, form, ct);
 
-        // Check for session cookie in response headers
-        if (loginResp.Headers.TryGetValues("Set-Cookie", out var setCookies))
-        {
-            foreach (var cookie in setCookies)
-            {
-                if (cookie.StartsWith(CookieName, StringComparison.OrdinalIgnoreCase))
-                {
-                    IsSessionEstablished = true;
-                    return true;
-                }
-            }
-        }
+        // With AllowAutoRedirect=true the login 302 is followed automatically.
+        // WordPress sets the session cookie on the redirect response; HttpClientHandler
+        // stores it in the CookieContainer rather than exposing it in the final response headers.
+        var siteUri = new Uri("https://www.fanedit.org/");
+        IsSessionEstablished = _cookies.GetCookies(siteUri)
+            .Cast<System.Net.Cookie>()
+            .Any(c => c.Name.StartsWith(CookieName, StringComparison.OrdinalIgnoreCase));
 
-        return false;
+        return IsSessionEstablished;
     }
 
-    /// <summary>Returns true when a response is a redirect to the login page (session expired).</summary>
+    /// <summary>Returns true when a response landed on the login page (session expired).</summary>
     public static bool IsSessionExpiredResponse(HttpResponseMessage response)
     {
-        if (response.StatusCode != System.Net.HttpStatusCode.Found) return false;
-        var loc = response.Headers.Location?.ToString() ?? string.Empty;
-        return loc.Contains("wp-login.php", StringComparison.OrdinalIgnoreCase);
+        // With AllowAutoRedirect=true the final RequestUri shows where we ended up.
+        var finalUrl = response.RequestMessage?.RequestUri?.ToString() ?? string.Empty;
+        return finalUrl.Contains("wp-login.php", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? ExtractNonce(string html)

@@ -12,8 +12,9 @@ namespace Chronicle.Plugin.FanEdit;
 /// </summary>
 public sealed class FanEditMetadataProvider : IMetadataProvider
 {
-    private const string BaseUrl       = "https://www.fanedit.org";
-    private const int    ScoreThreshold = 50;
+    private const string BaseUrl        = "https://fanedit.org";
+    private const string SearchBase    = "https://fanedit.org/fanedit-search/tag/originalmovietitle";
+    private const int    ScoreThreshold = 25;
 
     private string?             _username;
     private string?             _password;
@@ -94,34 +95,113 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
         _scraper = new FanEditScraper();
 
         var cookies = new CookieContainer();
-        var handler = new HttpClientHandler { CookieContainer = cookies, AllowAutoRedirect = false };
-        _http       = new HttpClient(handler) { BaseAddress = new Uri(BaseUrl) };
+        var handler = new HttpClientHandler { CookieContainer = cookies, AllowAutoRedirect = true };
+        _http       = new HttpClient(handler);
         _http.DefaultRequestHeaders.Add("User-Agent", ua);
         _auth = new FanEditAuthService(_http, cookies, _limiter);
     }
 
     // ── Core operations ───────────────────────────────────────────────────
+    private static readonly System.Text.RegularExpressions.Regex _trailingYear =
+        new(@"\s*\(\d{4}\)\s*$");
+    private static readonly System.Text.RegularExpressions.Regex _slugNoise =
+        new(@"[^a-z0-9\s-]");
+    // Primary separator patterns — anything to the right of these is "edit name", not movie title.
+    private static readonly System.Text.RegularExpressions.Regex _editSeparator =
+        new(@"\s+[-–—:]\s+|\s*:\s*");
+
+    /// <summary>
+    /// Generates JReviews originalmovietitle slug candidates from a raw title.
+    /// "Alien - Darksteel Cut (2023)" → ["alien", "alien-darksteel-cut", "alien-darksteel"]
+    /// </summary>
+    private static List<string> BuildSlugCandidates(string rawTitle)
+    {
+        var clean = _trailingYear.Replace(rawTitle, "").Trim();
+        var candidates = new List<string>();
+
+        // First candidate: part before the first edit separator (likely the original movie title).
+        // Also add the article-toggled variant because IFDB tags vary — some use "the-empire-strikes-back",
+        // others use "empire-strikes-back", and we can't know which without fetching.
+        var separatorMatch = _editSeparator.Match(clean);
+        if (separatorMatch.Success && separatorMatch.Index > 0)
+        {
+            var prefix = clean[..separatorMatch.Index].Trim();
+            var prefixSlug = ToSlug(prefix);
+            candidates.Add(prefixSlug);
+            candidates.Add(ToggleLeadingArticle(prefixSlug));
+        }
+
+        // Full cleaned title as a slug — covers edits that don't use a separator.
+        var fullSlug = ToSlug(clean);
+        if (!candidates.Contains(fullSlug, StringComparer.OrdinalIgnoreCase))
+            candidates.Add(fullSlug);
+
+        // Progressively shorter word groups from the full title.
+        var words = fullSlug.Split('-', StringSplitOptions.RemoveEmptyEntries);
+        for (var take = words.Length - 1; take >= 1; take--)
+        {
+            var shorter = string.Join("-", words[..take]);
+            if (!candidates.Contains(shorter, StringComparer.OrdinalIgnoreCase))
+                candidates.Add(shorter);
+        }
+
+        return candidates;
+    }
+
+    /// <summary>
+    /// Returns the slug with its leading article toggled.
+    /// "the-empire-strikes-back" → "empire-strikes-back"
+    /// "empire-strikes-back"     → "the-empire-strikes-back"
+    /// </summary>
+    private static string ToggleLeadingArticle(string slug)
+    {
+        foreach (var article in new[] { "the-", "a-", "an-" })
+        {
+            if (slug.StartsWith(article, StringComparison.Ordinal))
+                return slug[article.Length..];
+        }
+        return "the-" + slug;
+    }
+
+    private static string ToSlug(string text)
+    {
+        text = text.ToLowerInvariant();
+        text = _slugNoise.Replace(text, " ");
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"\s+", "-").Trim('-');
+        return text;
+    }
+
     public async Task<IReadOnlyList<ScoredCandidate>> SearchAsync(
         MediaSearchContext context, CancellationToken ct = default)
     {
         EnsureConfigured();
         await EnsureSessionAsync(ct);
 
-        var titlesToTry = new List<string> { context.Name };
+        var rawTitles = new List<string> { context.Name };
         if (context.AltTitles is { Count: > 0 })
-            titlesToTry.AddRange(context.AltTitles);
+            rawTitles.AddRange(context.AltTitles);
+
+        // Expand each raw title into JReviews originalmovietitle slug candidates.
+        var slugsToTry = rawTitles
+            .SelectMany(BuildSlugCandidates)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
         var seen       = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var candidates = new List<ScoredCandidate>();
 
-        foreach (var title in titlesToTry.Distinct(StringComparer.OrdinalIgnoreCase))
+        foreach (var slug in slugsToTry)
         {
-            var searchUrl = $"{BaseUrl}/ifdb/?s={Uri.EscapeDataString(title)}&post_type=fanedit";
+            if (candidates.Count >= 5) break; // enough results, stop searching
+
             await _limiter!.ThrottleAsync(ct);
-            var resp = await _http!.GetAsync(searchUrl, ct);
-            resp.EnsureSuccessStatusCode();
+            var url  = $"{SearchBase}/{slug}/?criteria=2";
+            var resp = await _http!.GetAsync(url, ct);
+            if (!resp.IsSuccessStatusCode) continue;
+
             var html    = await resp.Content.ReadAsStringAsync(ct);
             var results = _scraper!.ParseSearchResults(html);
+            if (results.Count == 0) continue;
 
             foreach (var r in results)
             {
@@ -139,6 +219,10 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
                         Score: score
                     ));
             }
+
+            // Stop early only on a high-confidence match; a single marginal hit should not
+            // prevent more-specific slug candidates (e.g. "the-empire-strikes-back") from running.
+            if (candidates.Any(c => c.Score >= 60) || candidates.Count >= 3) break;
         }
 
         return candidates.OrderByDescending(c => c.Score).Take(10).ToList();
@@ -210,11 +294,26 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
     private static int ScoreSearchResult(MediaSearchContext ctx, FanEditSearchResult r)
     {
         var score = 0;
-        var norm  = r.Title.ToLowerInvariant().Trim();
-        var query = ctx.Name.ToLowerInvariant().Trim();
 
-        if (norm == query)                              score += 40;
-        else if (LevenshteinRatio(norm, query) <= 0.2) score += 20;
+        // Normalise both sides: strip punctuation, lowercase, collapse spaces.
+        var norm  = NormaliseForScore(r.Title);
+        var query = NormaliseForScore(_trailingYear.Replace(ctx.Name, ""));
+
+        if (norm == query)
+            score += 60;
+        else if (norm.Length > 0 && query.Length > 0 && (norm.Contains(query) || query.Contains(norm)))
+            score += 40;
+        else if (LevenshteinRatio(norm, query) <= 0.3)
+            score += 30;
+        else
+        {
+            // Partial word overlap: count shared words
+            var queryWords  = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var normWords   = norm.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
+            var shared      = queryWords.Count(w => normWords.Contains(w));
+            if (shared > 0)
+                score += Math.Min(30, shared * 10);
+        }
 
         if (ctx.Year.HasValue && r.Year.HasValue)
         {
@@ -225,6 +324,15 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
         }
 
         return score;
+    }
+
+    private static string NormaliseForScore(string s)
+    {
+        s = _trailingYear.Replace(s, "");
+        s = s.ToLowerInvariant();
+        s = _slugNoise.Replace(s, " ");
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"\s+", " ");
+        return s.Trim();
     }
 
     private static double LevenshteinRatio(string a, string b)
@@ -259,7 +367,16 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
     private static string ResolveUrl(string externalId)
     {
         if (externalId.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+        {
+            // Validate host before using the URL — prevent SSRF by ensuring only
+            // fanedit.org URLs are fetched. Any other host is rejected outright.
+            if (!Uri.TryCreate(externalId, UriKind.Absolute, out var uri) ||
+                (!uri.Host.Equals("www.fanedit.org", StringComparison.OrdinalIgnoreCase) &&
+                 !uri.Host.Equals("fanedit.org",     StringComparison.OrdinalIgnoreCase)))
+                throw new ArgumentException(
+                    $"URL must be a fanedit.org address: '{externalId}'");
             return externalId;
+        }
         if (externalId.StartsWith("fanedit:", StringComparison.OrdinalIgnoreCase))
         {
             var id = externalId["fanedit:".Length..];
