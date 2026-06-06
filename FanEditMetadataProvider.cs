@@ -110,6 +110,23 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
     private static readonly System.Text.RegularExpressions.Regex _editSeparator =
         new(@"\s+[-–—:]\s+|\s*:\s*");
 
+    // IFDB often uses full canonical episode titles rather than short franchise names.
+    // This map expands short slugs we'd generate naturally to the IFDB canonical forms.
+    private static readonly Dictionary<string, string[]> _slugExpansions =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["star-wars"]                  = ["star-wars-episode-iv-a-new-hope", "star-wars-a-new-hope"],
+            ["the-empire-strikes-back"]    = ["star-wars-episode-v-the-empire-strikes-back"],
+            ["empire-strikes-back"]        = ["star-wars-episode-v-the-empire-strikes-back"],
+            ["return-of-the-jedi"]         = ["star-wars-episode-vi-return-of-the-jedi"],
+            ["the-phantom-menace"]         = ["star-wars-episode-i-the-phantom-menace"],
+            ["attack-of-the-clones"]       = ["star-wars-episode-ii-attack-of-the-clones"],
+            ["revenge-of-the-sith"]        = ["star-wars-episode-iii-revenge-of-the-sith"],
+            ["the-force-awakens"]          = ["star-wars-the-force-awakens", "star-wars-episode-vii-the-force-awakens"],
+            ["the-last-jedi"]              = ["star-wars-the-last-jedi", "star-wars-episode-viii-the-last-jedi"],
+            ["the-rise-of-skywalker"]      = ["star-wars-the-rise-of-skywalker", "star-wars-episode-ix-the-rise-of-skywalker"],
+        };
+
     /// <summary>
     /// Generates JReviews originalmovietitle slug candidates from a raw title.
     /// "Alien - Darksteel Cut (2023)" → ["alien", "alien-darksteel-cut", "alien-darksteel"]
@@ -129,6 +146,15 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
             var prefixSlug = ToSlug(prefix);
             candidates.Add(prefixSlug);
             candidates.Add(ToggleLeadingArticle(prefixSlug));
+
+            // Inject canonical IFDB episode titles for known franchise short slugs.
+            foreach (var slug in new[] { prefixSlug, ToggleLeadingArticle(prefixSlug) })
+            {
+                if (_slugExpansions.TryGetValue(slug, out var expansions))
+                    foreach (var exp in expansions)
+                        if (!candidates.Contains(exp, StringComparer.OrdinalIgnoreCase))
+                            candidates.Add(exp);
+            }
         }
 
         // Full cleaned title as a slug — covers edits that don't use a separator.
@@ -144,6 +170,17 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
             if (!candidates.Contains(shorter, StringComparer.OrdinalIgnoreCase))
                 candidates.Add(shorter);
         }
+
+        // After truncation, inject canonical expansions for any franchise short slugs that landed
+        // in the list (covers titles with no separator like "The Empire Strikes Back Revisited").
+        var expansionsToAdd = new List<string>();
+        foreach (var c in candidates.ToList())
+            if (_slugExpansions.TryGetValue(c, out var exps))
+                foreach (var exp in exps)
+                    if (!candidates.Contains(exp, StringComparer.OrdinalIgnoreCase) &&
+                        !expansionsToAdd.Contains(exp, StringComparer.OrdinalIgnoreCase))
+                        expansionsToAdd.Add(exp);
+        candidates.AddRange(expansionsToAdd);
 
         return candidates;
     }
@@ -198,6 +235,16 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
             var url  = $"{SearchBase}/{slug}/?criteria=2";
             var resp = await _http!.GetAsync(url, ct);
             if (!resp.IsSuccessStatusCode) continue;
+
+            // Session may expire server-side mid-batch; a redirect to wp-login.php
+            // returns 200 but contains no fan-edit listings.
+            if (FanEditAuthService.IsSessionExpiredResponse(resp))
+            {
+                await _auth!.EnsureSessionAsync(_username!, _password!, ct);
+                await _limiter.ThrottleAsync(ct);
+                resp = await _http.GetAsync(url, ct);
+                if (!resp.IsSuccessStatusCode) continue;
+            }
 
             var html    = await resp.Content.ReadAsStringAsync(ct);
             var results = _scraper!.ParseSearchResults(html);
