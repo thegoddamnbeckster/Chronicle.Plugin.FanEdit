@@ -255,11 +255,14 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
             // canonical <link> in the HTML to detect where we actually landed).
             // Check BEFORE ParseSearchResults because Strategy 2 (permalink links)
             // returns noisy sidebar/nav results from the detail page that block this path.
+            // A redirect to a detail page means the canonical URL looks like a root-level
+            // fanedit.org post permalink (e.g. /waterworld-the-ulysses-cut/) — NOT a
+            // search/tag/category URL (e.g. /fanedit-search/tag/...). Use the same
+            // _postSlugPattern from FanEditScraper to distinguish the two.
             bool redirectedToDetail =
                 !string.IsNullOrWhiteSpace(canonicalUrl) &&
-                !canonicalUrl!.Equals(url, StringComparison.OrdinalIgnoreCase) &&
                 !FanEditAuthService.IsSessionExpiredResponse(resp) &&
-                canonicalUrl.Contains("fanedit.org", StringComparison.OrdinalIgnoreCase);
+                FanEditScraper.IsDetailPageUrl(canonicalUrl!);
 
             List<FanEditSearchResult> results;
             if (redirectedToDetail)

@@ -30,6 +30,12 @@ internal sealed class FanEditScraper
     };
 
     /// <summary>
+    /// Returns true when the URL is a root-level fanedit.org post permalink
+    /// (e.g. https://fanedit.org/some-slug/), not a search/tag/category URL.
+    /// </summary>
+    public static bool IsDetailPageUrl(string url) => _postSlugPattern.IsMatch(url);
+
+    /// <summary>
     /// Returns the canonical URL embedded in the page, or null if not present.
     /// Used to detect single-result JReviews tag redirects that land on a detail page.
     /// </summary>
