@@ -250,23 +250,26 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
             var results = _scraper!.ParseSearchResults(html);
 
             // JReviews redirects directly to the fan-edit detail page when a tag has
-            // exactly one match — detect this and synthesise a single result from it.
+            // exactly one match (HttpClient follows the redirect transparently, so
+            // resp.RequestMessage.RequestUri is still the original URL — use the
+            // canonical <link> in the HTML to detect where we actually landed).
             if (results.Count == 0)
             {
-                var finalUrl = resp.RequestMessage?.RequestUri?.ToString() ?? string.Empty;
-                if (!finalUrl.Equals(url, StringComparison.OrdinalIgnoreCase) &&
+                var canonicalUrl = FanEditScraper.GetCanonicalUrl(html);
+                if (!string.IsNullOrWhiteSpace(canonicalUrl) &&
+                    !canonicalUrl.Equals(url, StringComparison.OrdinalIgnoreCase) &&
                     !FanEditAuthService.IsSessionExpiredResponse(resp) &&
-                    finalUrl.Contains("fanedit.org", StringComparison.OrdinalIgnoreCase))
+                    canonicalUrl.Contains("fanedit.org", StringComparison.OrdinalIgnoreCase))
                 {
                     try
                     {
-                        var entry = _scraper.ParseDetailPage(html, finalUrl);
+                        var entry = _scraper!.ParseDetailPage(html, canonicalUrl);
                         results = [new FanEditSearchResult
                         {
                             Title        = entry.Title ?? string.Empty,
                             Year         = entry.Year,
                             ThumbnailUrl = entry.PosterUrl,
-                            Url          = finalUrl,
+                            Url          = canonicalUrl,
                         }];
                     }
                     catch { /* ignore — page wasn't parseable as a detail page */ }

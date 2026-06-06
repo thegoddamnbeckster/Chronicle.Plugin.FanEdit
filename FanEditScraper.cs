@@ -29,6 +29,19 @@ internal sealed class FanEditScraper
         "terms", "terms-of-service", "cookie-policy", "rules", "guidelines",
     };
 
+    /// <summary>
+    /// Returns the canonical URL embedded in the page, or null if not present.
+    /// Used to detect single-result JReviews tag redirects that land on a detail page.
+    /// </summary>
+    public static string? GetCanonicalUrl(string html)
+    {
+        var doc = new HtmlDocument();
+        doc.LoadHtml(html);
+        return doc.DocumentNode
+            .SelectSingleNode("//link[@rel='canonical']")
+            ?.GetAttributeValue("href", null);
+    }
+
     public List<FanEditSearchResult> ParseSearchResults(string html)
     {
         var doc     = new HtmlDocument();
