@@ -248,7 +248,31 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
 
             var html    = await resp.Content.ReadAsStringAsync(ct);
             var results = _scraper!.ParseSearchResults(html);
-            if (results.Count == 0) continue;
+
+            // JReviews redirects directly to the fan-edit detail page when a tag has
+            // exactly one match — detect this and synthesise a single result from it.
+            if (results.Count == 0)
+            {
+                var finalUrl = resp.RequestMessage?.RequestUri?.ToString() ?? string.Empty;
+                if (!finalUrl.Equals(url, StringComparison.OrdinalIgnoreCase) &&
+                    !FanEditAuthService.IsSessionExpiredResponse(resp) &&
+                    finalUrl.Contains("fanedit.org", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        var entry = _scraper.ParseDetailPage(html, finalUrl);
+                        results = [new FanEditSearchResult
+                        {
+                            Title        = entry.Title ?? string.Empty,
+                            Year         = entry.Year,
+                            ThumbnailUrl = entry.PosterUrl,
+                            Url          = finalUrl,
+                        }];
+                    }
+                    catch { /* ignore — page wasn't parseable as a detail page */ }
+                }
+                if (results.Count == 0) continue;
+            }
 
             foreach (var r in results)
             {
