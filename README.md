@@ -1,5 +1,7 @@
 # Chronicle.Plugin.FanEdit
 
+[![Latest Release](https://img.shields.io/github/v/release/thegoddamnbeckster/Chronicle.Plugin.FanEdit?label=Chronicle.Plugin.FanEdit&color=6f42c1)](https://github.com/thegoddamnbeckster/Chronicle.Plugin.FanEdit/releases/latest)
+
 Metadata source plugin for [Chronicle](https://github.com/thegoddamnbeckster/Chronicle) that
 fetches fanedit metadata from [fanedit.org (IFDB – the Internet Fan Edit Database)](https://www.fanedit.org/ifdb/).
 
