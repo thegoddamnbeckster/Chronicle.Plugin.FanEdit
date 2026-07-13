@@ -1,3 +1,4 @@
+using PluginAuthException = Chronicle.Plugins.PluginAuthException;
 using Chronicle.Plugin.FanEdit.Models;
 using Chronicle.Plugins;
 using Chronicle.Plugins.Models;
@@ -323,8 +324,12 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
 
         if (FanEditAuthService.IsSessionExpiredResponse(resp))
         {
-            // Re-authenticate once and retry
-            await _auth!.EnsureSessionAsync(_username!, _password!, ct);
+            // Re-authenticate once and retry — throw PluginAuthException if login fails
+            var ok = await _auth!.EnsureSessionAsync(_username!, _password!, ct);
+            if (!ok)
+                throw new PluginAuthException(
+                    "chronicle.plugin.fanedit",
+                    "Session expired and re-login failed. Check your username and password in plugin settings.");
             await _limiter.ThrottleAsync(ct);
             resp = await _http.GetAsync(url, ct);
         }
@@ -370,7 +375,8 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
         {
             var ok = await _auth.EnsureSessionAsync(_username!, _password!, ct);
             if (!ok)
-                throw new InvalidOperationException(
+                throw new PluginAuthException(
+                    "chronicle.plugin.fanedit",
                     "Could not log in to fanedit.org. Check your username and password in plugin settings.");
         }
     }
