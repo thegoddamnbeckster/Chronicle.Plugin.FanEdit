@@ -5,6 +5,13 @@
     <RootNamespace>Chronicle.Plugin.FanEdit</RootNamespace>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Class library `dotnet build` doesn't copy NuGet package DLLs (HtmlAgilityPack) to
+         the output folder by default — only `dotnet publish` does. Chronicle's plugin loader
+         expects HtmlAgilityPack.dll physically next to the plugin DLL (it doesn't consult
+         deps.json), and the deploy scripts copy whatever's in this build output. Without this,
+         a clean rebuild loads the plugin fine but throws FileNotFoundException the first time
+         it touches HTML. -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Chronicle.Plugin.FanEdit.Tests" />
