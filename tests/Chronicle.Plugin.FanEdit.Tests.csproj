@@ -12,5 +12,15 @@
     <PackageReference Include="xunit" Version="2.*" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.*" />
     <PackageReference Include="FluentAssertions" Version="6.*" />
+    <!--
+      Unlike the main plugin project, this one does NOT exclude Serilog's runtime assets.
+      Chronicle.Plugin.FanEdit.csproj deliberately excludes them (ExcludeAssets="runtime") because
+      in the real host, Serilog.dll is already loaded by Chronicle.API and a second copy would
+      risk a version clash. A standalone `dotnet test` run has no such host providing it, so
+      FanEditMetadataProvider's Log.ForContext&lt;FanEditMetadataProvider&gt;() call throws
+      FileNotFoundException the moment a test exercises it unless this test project supplies its
+      own copy (confirmed by the same failure mode in Chronicle.Plugin.TMDB's test project).
+    -->
+    <PackageReference Include="Serilog" Version="4.3.0" />
   </ItemGroup>
 </Project>

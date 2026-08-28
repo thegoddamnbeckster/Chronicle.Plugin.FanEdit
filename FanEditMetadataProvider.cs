@@ -4,6 +4,7 @@ using Chronicle.Plugins;
 using Chronicle.Plugins.Models;
 using System.Net;
 using System.Text.Json;
+using Serilog;
 
 namespace Chronicle.Plugin.FanEdit;
 
@@ -16,6 +17,13 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
     private const string BaseUrl        = "https://fanedit.org";
     private const string SearchBase    = "https://fanedit.org/fanedit-search/tag/originalmovietitle";
     private const int    ScoreThreshold = 25;
+
+    private static readonly ILogger _log = Log.ForContext<FanEditMetadataProvider>();
+
+    // Cap on how long we'll wait before the single retry, regardless of what a 429/503
+    // response asks for — matches the bounded-backoff convention used across the other
+    // metadata plugins (TMDB, TheTVDB) rather than trusting an arbitrarily large value.
+    private static readonly TimeSpan MaxBackoffWait = TimeSpan.FromSeconds(30);
 
     private string?             _username;
     private string?             _password;
@@ -40,7 +48,7 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
             HierarchyLevels = 1,
             DefaultPriority = 10,
             SupportedFields = ["title", "overview", "year", "poster_url", "backdrop_url",
-                               "runtime_minutes", "genres", "cast", "directors", "rating", "tags"],
+                               "runtime_minutes", "genres", "cast", "crew", "rating", "tags"],
         },
     ];
 
@@ -81,6 +89,19 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
             },
         ]
     };
+
+    // ── Test seam ─────────────────────────────────────────────────────────
+    /// <summary>
+    /// Injects a stub HttpClient/limiter directly, bypassing Configure()'s real
+    /// HttpClientHandler + cookie-jar construction so tests can exercise HTTP-facing
+    /// methods (e.g. GetImageAsync, which only needs _http and _limiter) against a fake
+    /// handler. Internal via InternalsVisibleTo("Chronicle.Plugin.FanEdit.Tests").
+    /// </summary>
+    internal void ConfigureForTesting(HttpClient http, FanEditRateLimiter limiter)
+    {
+        _http    = http;
+        _limiter = limiter;
+    }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
     public void Configure(IReadOnlyDictionary<string, string> settings)
@@ -209,6 +230,39 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
         return text;
     }
 
+    // ── Rate-limit handling ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// fanedit.org has no published rate limit or documented API at all -- this is an
+    /// unofficial scrape of a WordPress/JReviews site, throttled client-side via
+    /// <see cref="FanEditRateLimiter"/>. The README has always promised a 429/503 backoff
+    /// (README.md: "Back off request_delay_ms * 3, retry once") that the code never actually
+    /// implemented -- a rate-limited or overloaded response fell straight through to
+    /// EnsureSuccessStatusCode() and threw. This delivers that promised behavior: a single
+    /// bounded retry, honoring Retry-After when the server sends one, otherwise falling back
+    /// to the documented request_delay_ms * 3 formula.
+    /// </summary>
+    private async Task<HttpResponseMessage> GetWithRateLimitAsync(string url, CancellationToken ct)
+    {
+        var resp = await _http!.GetAsync(url, ct);
+
+        if (resp.StatusCode != HttpStatusCode.TooManyRequests &&
+            resp.StatusCode != HttpStatusCode.ServiceUnavailable)
+            return resp;
+
+        var fallback = TimeSpan.FromMilliseconds(_limiter!.DelayMs * 3);
+        var wait     = resp.Headers.RetryAfter?.Delta ?? fallback;
+        if (wait > MaxBackoffWait) wait = MaxBackoffWait;
+
+        _log.Warning(
+            "FanEdit: rate-limited ({Status}); waiting {Seconds}s before one retry",
+            (int)resp.StatusCode, wait.TotalSeconds);
+
+        resp.Dispose();
+        await Task.Delay(wait, ct);
+        return await _http.GetAsync(url, ct);
+    }
+
     public async Task<IReadOnlyList<ScoredCandidate>> SearchAsync(
         MediaSearchContext context, CancellationToken ct = default)
     {
@@ -234,7 +288,7 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
 
             await _limiter!.ThrottleAsync(ct);
             var url  = $"{SearchBase}/{slug}/?criteria=2";
-            var resp = await _http!.GetAsync(url, ct);
+            var resp = await GetWithRateLimitAsync(url, ct);
             if (!resp.IsSuccessStatusCode) continue;
 
             // Session may expire server-side mid-batch; a redirect to wp-login.php
@@ -243,7 +297,7 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
             {
                 await _auth!.EnsureSessionAsync(_username!, _password!, ct);
                 await _limiter.ThrottleAsync(ct);
-                resp = await _http.GetAsync(url, ct);
+                resp = await GetWithRateLimitAsync(url, ct);
                 if (!resp.IsSuccessStatusCode) continue;
             }
 
@@ -320,7 +374,7 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
 
         var url = ResolveUrl(externalId);
         await _limiter!.ThrottleAsync(ct);
-        var resp = await _http!.GetAsync(url, ct);
+        var resp = await GetWithRateLimitAsync(url, ct);
 
         if (FanEditAuthService.IsSessionExpiredResponse(resp))
         {
@@ -331,7 +385,7 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
                     "chronicle.plugin.fanedit",
                     "Session expired and re-login failed. Check your username and password in plugin settings.");
             await _limiter.ThrottleAsync(ct);
-            resp = await _http.GetAsync(url, ct);
+            resp = await GetWithRateLimitAsync(url, ct);
         }
 
         if (resp.StatusCode == HttpStatusCode.NotFound)
@@ -348,7 +402,7 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
     {
         EnsureConfigured();
         await _limiter!.ThrottleAsync(ct);
-        var resp = await _http!.GetAsync(url, ct);
+        var resp = await GetWithRateLimitAsync(url, ct);
         resp.EnsureSuccessStatusCode();
         return await resp.Content.ReadAsByteArrayAsync(ct);
     }
@@ -419,7 +473,13 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
     private static string NormaliseForScore(string s)
     {
         s = _trailingYear.Replace(s, "");
-        s = s.ToLowerInvariant();
+        // Colon and hyphen are used interchangeably as an edit-name separator between sources
+        // ("Alien - Darksteel Cut" here vs "Alien: Darksteel Cut" on fanedit.org) -- treat both
+        // as whitespace so this doesn't fall through to the much weaker Levenshtein/word-overlap
+        // fallbacks below over what is otherwise an exact title match. _slugNoise alone doesn't
+        // do this: it deliberately keeps hyphens (see BuildSlugCandidates, which needs them for
+        // URL slugs), so it can't be reused here as-is.
+        s = s.ToLowerInvariant().Replace(":", " ").Replace("-", " ");
         s = _slugNoise.Replace(s, " ");
         s = System.Text.RegularExpressions.Regex.Replace(s, @"\s+", " ");
         return s.Trim();
