@@ -28,16 +28,20 @@ public class FanEditAuthServiceTests
     [Fact]
     public async Task EnsureSessionAsync_ReturnsTrue_WhenLoginSetsWordPressLoggedInCookie()
     {
-        var loginResp = new HttpResponseMessage(HttpStatusCode.Found);
-        loginResp.Headers.Add("Set-Cookie",
-            "wordpress_logged_in_abc=value; Path=/; HttpOnly");
-
         var handler = new FakeHttpHandler(
             noncePage: new HttpResponseMessage(HttpStatusCode.OK)
                 { Content = new StringContent("<input name=\"_wpnonce\" value=\"abc123\"/>") },
-            loginResponse: loginResp);
+            loginResponse: new HttpResponseMessage(HttpStatusCode.OK));
 
         var cookies = new CookieContainer();
+        // EnsureSessionAsync reads the session cookie from the CookieContainer, not from
+        // response headers -- with AllowAutoRedirect=true a real HttpClientHandler stores
+        // Set-Cookie there automatically (see that method's own comment). FakeHttpHandler is
+        // a raw HttpMessageHandler and bypasses that machinery, so the test seeds the
+        // container directly to simulate what the real handler would already have done.
+        cookies.Add(new Uri("https://www.fanedit.org/"),
+            new Cookie("wordpress_logged_in_abc", "value") { HttpOnly = true });
+
         var auth = new FanEditAuthService(MakeClient(handler), cookies, new FanEditRateLimiter(1000));
 
         var result = await auth.EnsureSessionAsync("user", "pass", CancellationToken.None);
@@ -49,8 +53,12 @@ public class FanEditAuthServiceTests
     [Fact]
     public void IsSessionExpired_ReturnsTrue_WhenResponseRedirectsToLogin()
     {
-        var resp = new HttpResponseMessage(HttpStatusCode.Found);
-        resp.Headers.Location = new Uri("https://www.fanedit.org/wp-login.php");
+        // IsSessionExpiredResponse checks the final RequestUri (where AllowAutoRedirect=true
+        // already landed), not a raw 302's Location header -- see its own comment.
+        var resp = new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            RequestMessage = new HttpRequestMessage(HttpMethod.Get, "https://www.fanedit.org/wp-login.php"),
+        };
 
         FanEditAuthService.IsSessionExpiredResponse(resp).Should().BeTrue();
     }

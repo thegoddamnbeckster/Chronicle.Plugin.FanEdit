@@ -19,20 +19,31 @@ public class FanEditScraperTests
         </body></html>
         """;
 
+    // JReviews field-row markup (the plugin fanedit.org actually runs) -- a plain <dl> was
+    // never real fanedit.org markup, see FanEditScraper.ParseDefinitionList's own doc.
     private const string DetailHtml = """
         <html>
         <head>
           <meta property="og:title" content="Blade Runner: The Final Edit" />
-          <meta property="og:description" content="A refined cut." />
-          <meta property="og:image" content="https://www.fanedit.org/poster.jpg" />
+          <meta itemprop="image" content="https://www.fanedit.org/poster.jpg" />
         </head>
         <body>
-          <dl>
-            <dt>Editor:</dt><dd>SomeEditor</dd>
-            <dt>Runtime:</dt><dd>117 min</dd>
-            <dt>Video:</dt><dd>H.264</dd>
-            <dt>Audio:</dt><dd>AC3 5.1</dd>
-          </dl>
+          <div class="jrFieldRow jrBriefsynopsis">
+            <div class="jrFieldLabel">Synopsis:</div>
+            <div class="jrFieldValue">A refined cut.</div>
+          </div>
+          <div class="jrFieldRow jrFaneditrunningtimemin">
+            <div class="jrFieldLabel">Runtime:</div>
+            <div class="jrFieldValue">117 min</div>
+          </div>
+          <div class="jrFieldRow jrVideo">
+            <div class="jrFieldLabel">Video:</div>
+            <div class="jrFieldValue">H.264</div>
+          </div>
+          <div class="jrFieldRow jrAudio">
+            <div class="jrFieldLabel">Audio:</div>
+            <div class="jrFieldValue">AC3 5.1</div>
+          </div>
           <div class="ifdb-rating">8.5 (42 votes)</div>
         </body></html>
         """;
