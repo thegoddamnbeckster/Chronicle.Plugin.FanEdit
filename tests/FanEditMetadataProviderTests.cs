@@ -38,6 +38,19 @@ public class FanEditMetadataProviderTests
     }
 
     [Fact]
+    public void UserAgentDefault_IdentifiesChronicle_NotABrowser()
+    {
+        // Root-caused live (2026-09-28): this used to default to a real Chrome browser string,
+        // identifying this traffic as a browser to fanedit.org instead of what it actually is.
+        var schema = new FanEditMetadataProvider().GetSettingsSchema();
+        var uaDefault = schema.Settings.Single(s => s.Key == "user_agent").DefaultValue;
+
+        uaDefault.Should().NotContain("Mozilla");
+        uaDefault.Should().NotContain("Chrome");
+        uaDefault.Should().Contain("Chronicle");
+    }
+
+    [Fact]
     public async Task SearchAsync_ThrowsInvalidOperation_WhenNotConfigured()
     {
         var provider = new FanEditMetadataProvider();

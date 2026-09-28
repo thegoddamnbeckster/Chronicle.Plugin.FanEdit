@@ -83,9 +83,12 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
             {
                 Key          = "user_agent",
                 Label        = "User-Agent String",
+                Description  = "Identifies Chronicle to the server. Root-caused live (2026-09-28): " +
+                                "this used to default to a real Chrome browser string, which " +
+                                "identifies this traffic as a browser instead of what it actually is.",
                 Type         = SettingType.Text,
                 Required     = false,
-                DefaultValue = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                DefaultValue = "Chronicle/1.0 (+https://github.com/thegoddamnbeckster/Chronicle)",
             },
         ]
     };
@@ -111,7 +114,7 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
 
         var delayMs = settings.TryGetValue("request_delay_ms", out var d) && int.TryParse(d, out var di) ? di : 1000;
         var ua      = settings.GetValueOrDefault("user_agent",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
+            "Chronicle/1.0 (+https://github.com/thegoddamnbeckster/Chronicle)");
 
         _limiter = new FanEditRateLimiter(delayMs);
         _scraper = new FanEditScraper();
