@@ -60,6 +60,7 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
             {
                 Key      = "username",
                 Label    = "fanedit.org Username",
+                Description = "Your fanedit.org account name. Chronicle signs in as you to read the fan edit database. Create a free account at https://fanedit.org first if you do not have one.",
                 Type     = SettingType.Text,
                 Required = true,
             },
@@ -67,6 +68,7 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
             {
                 Key      = "password",
                 Label    = "fanedit.org Password",
+                Description = "The password for that account. Stored hidden and used only to sign in to fanedit.org; it is never shown again after you save.",
                 Type     = SettingType.Password,
                 Required = true,
             },
@@ -121,7 +123,7 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
 
         var cookies = new CookieContainer();
         var handler = new HttpClientHandler { CookieContainer = cookies, AllowAutoRedirect = true };
-        _http       = new HttpClient(handler);
+        _http       = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
         _http.DefaultRequestHeaders.Add("User-Agent", ua);
         _auth = new FanEditAuthService(_http, cookies, _limiter);
     }
