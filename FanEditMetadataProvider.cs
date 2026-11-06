@@ -35,7 +35,7 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
     // ── Identity ──────────────────────────────────────────────────────────
     public string PluginId => "chronicle.plugin.fanedit";
     public string Name     => "FanEdit";
-    public string Version  => "1.0.0";
+    public string Version  => System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(typeof(FanEditMetadataProvider).Assembly)?.InformationalVersion.Split('+')[0] ?? "1.0.2";
     public string Author   => "Chronicle Contributors";
 
     // ── Capabilities ──────────────────────────────────────────────────────
@@ -404,6 +404,10 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
     public async Task<byte[]> GetImageAsync(string url, CancellationToken ct = default)
     {
         EnsureConfigured();
+        // The session cookie rides on this client, so it is only ever sent to FanEdit's own hosts.
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps ||
+            !(uri.Host.Equals("fanedit.org", StringComparison.OrdinalIgnoreCase) || uri.Host.EndsWith(".fanedit.org", StringComparison.OrdinalIgnoreCase)))
+            throw new ArgumentException("This plugin fetches images only from fanedit.org.");
         await _limiter!.ThrottleAsync(ct);
         var resp = await GetWithRateLimitAsync(url, ct);
         resp.EnsureSuccessStatusCode();
