@@ -263,9 +263,17 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
             "FanEdit: rate-limited ({Status}); waiting {Seconds}s before one retry",
             (int)resp.StatusCode, wait.TotalSeconds);
 
+        var asked = resp.Headers.RetryAfter?.Delta ?? wait;
         resp.Dispose();
         await Task.Delay(wait, ct);
-        return await _http.GetAsync(url, ct);
+        var again = await _http.GetAsync(url, ct);
+        if (again.StatusCode != HttpStatusCode.TooManyRequests && again.StatusCode != HttpStatusCode.ServiceUnavailable)
+            return again;
+
+        // Still limited or overloaded: say so (a pause, not "nothing found"), with what the site asked for, so the queue holds the item.
+        again.Dispose();
+        throw new HttpRequestException("fanedit.org is rate limiting or overloaded", null, HttpStatusCode.TooManyRequests)
+            { Data = { ["RetryAfter"] = asked } };
     }
 
     public async Task<IReadOnlyList<ScoredCandidate>> SearchAsync(

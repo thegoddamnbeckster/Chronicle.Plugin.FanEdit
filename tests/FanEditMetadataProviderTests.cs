@@ -116,7 +116,9 @@ public class FanEditMetadataProviderTests
 
         var act = () => provider.GetImageAsync("https://fanedit.org/image.jpg");
 
-        await act.Should().ThrowAsync<HttpRequestException>();
+        var thrown = await act.Should().ThrowAsync<HttpRequestException>();
+        thrown.Which.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);       // a pause for Chronicle's queue, not "nothing found"
+        thrown.Which.Data.Contains("RetryAfter").Should().BeTrue();                 // and how long the site asked for
         handler.CallCount.Should().Be(2);
     }
 
