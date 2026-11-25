@@ -394,9 +394,7 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
             // Re-authenticate once and retry — throw PluginAuthException if login fails
             var ok = await _auth!.EnsureSessionAsync(_username!, _password!, ct);
             if (!ok)
-                throw new PluginAuthException(
-                    "chronicle.plugin.fanedit",
-                    "Session expired and re-login failed. Check your username and password in plugin settings.");
+                throw LoginFailure("Session expired and re-login failed. Check your username and password in plugin settings.");
             await _limiter.ThrottleAsync(ct);
             resp = await GetWithRateLimitAsync(url, ct);
         }
@@ -440,15 +438,23 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
                 "FanEditMetadataProvider is not configured. Call Configure() first.");
     }
 
+    /// <summary>The error for a failed login: when fanedit.org is showing its human-verification check the message says so (a wrong
+    /// password is not the problem), otherwise the usual credentials message.</summary>
+    private PluginAuthException LoginFailure(string credentialsMessage) => new(
+        "chronicle.plugin.fanedit",
+        _auth!.HumanCheckActive
+            ? "fanedit.org is showing a human-verification check (Cloudflare), so Chronicle cannot sign in right now. Your username and " +
+              "password are not the problem. Open fanedit.org in your browser and complete the check; Chronicle sends no further requests " +
+              "for an hour and then tries once more."
+            : credentialsMessage);
+
     private async Task EnsureSessionAsync(CancellationToken ct)
     {
         if (!_auth!.IsSessionEstablished)
         {
             var ok = await _auth.EnsureSessionAsync(_username!, _password!, ct);
             if (!ok)
-                throw new PluginAuthException(
-                    "chronicle.plugin.fanedit",
-                    "Could not log in to fanedit.org. Check your username and password in plugin settings.");
+                throw LoginFailure("Could not log in to fanedit.org. Check your username and password in plugin settings.");
         }
     }
 

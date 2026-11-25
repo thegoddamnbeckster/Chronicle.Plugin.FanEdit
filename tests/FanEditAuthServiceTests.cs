@@ -50,6 +50,52 @@ public class FanEditAuthServiceTests
         auth.IsSessionEstablished.Should().BeTrue();
     }
 
+    private static HttpResponseMessage CloudflareChallenge()
+    {
+        var r = new HttpResponseMessage(HttpStatusCode.Forbidden)
+            { Content = new StringContent("<html><title>Just a moment...</title><script src=\"/cdn-cgi/challenge-platform/h/b\"></script></html>") };
+        r.Headers.Add("Cf-Mitigated", "challenge");
+        return r;
+    }
+
+    [Fact]
+    public async Task EnsureSessionAsync_StopsAtAHumanCheck_SendsNoCredentials_AndHoldsFurtherRequests()
+    {
+        var handler = new FakeHttpHandler(noncePage: CloudflareChallenge());
+        var auth = new FanEditAuthService(MakeClient(handler), new CookieContainer(), new FanEditRateLimiter(1000));
+
+        (await auth.EnsureSessionAsync("user", "pass", CancellationToken.None)).Should().BeFalse();
+        auth.HumanCheckActive.Should().BeTrue();
+        handler.CallCount.Should().Be(1);                       // the login page only: no credentials were posted
+
+        (await auth.EnsureSessionAsync("user", "pass", CancellationToken.None)).Should().BeFalse();
+        handler.CallCount.Should().Be(1);                       // and nothing at all while the hold lasts
+    }
+
+    [Fact]
+    public async Task EnsureSessionAsync_ANormalFailure_IsNotMistakenForAHumanCheck()
+    {
+        var handler = new FakeHttpHandler(loginResponse: new HttpResponseMessage(HttpStatusCode.OK));
+        var auth = new FanEditAuthService(MakeClient(handler), new CookieContainer(), new FanEditRateLimiter(1000));
+
+        (await auth.EnsureSessionAsync("user", "wrong", CancellationToken.None)).Should().BeFalse();
+        auth.HumanCheckActive.Should().BeFalse();
+        handler.CallCount.Should().Be(2);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Forbidden, "<title>Just a moment...</title>", false, true)]
+    [InlineData(HttpStatusCode.ServiceUnavailable, "<script src=\"/cdn-cgi/challenge-platform/x\"></script>", false, true)]
+    [InlineData(HttpStatusCode.OK, "<form id=\"loginform\"></form>", false, false)]
+    [InlineData(HttpStatusCode.Forbidden, "Forbidden by the site rules", false, false)]
+    [InlineData(HttpStatusCode.OK, "<form id=\"loginform\"></form>", true, true)]
+    public void IsHumanCheck_RecognisesCloudflaresChallengeOnly(HttpStatusCode status, string body, bool header, bool expected)
+    {
+        var resp = new HttpResponseMessage(status);
+        if (header) resp.Headers.Add("Cf-Mitigated", "challenge");
+        FanEditAuthService.IsHumanCheck(resp, body).Should().Be(expected);
+    }
+
     [Fact]
     public void IsSessionExpired_ReturnsTrue_WhenResponseRedirectsToLogin()
     {
@@ -70,6 +116,7 @@ internal sealed class FakeHttpHandler : HttpMessageHandler
     private readonly HttpResponseMessage? _noncePage;
     private readonly HttpResponseMessage _loginResponse;
     private int _callCount;
+    public int CallCount => _callCount;
 
     public FakeHttpHandler(
         HttpResponseMessage? noncePage = null,

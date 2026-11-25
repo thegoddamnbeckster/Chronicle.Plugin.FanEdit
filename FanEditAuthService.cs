@@ -14,7 +14,17 @@ internal sealed class FanEditAuthService
     private readonly System.Net.CookieContainer    _cookies;
     private readonly FanEditRateLimiter _limiter;
 
+    /// <summary>How long every caller is held off once fanedit.org has answered with a human-verification check.</summary>
+    internal static readonly TimeSpan HumanCheckHold = TimeSpan.FromHours(1);
+
+    private DateTime _humanCheckUntilUtc = DateTime.MinValue;
+
     public bool IsSessionEstablished { get; private set; }
+
+    /// <summary>True while fanedit.org's last answer was a human-verification page (Cloudflare "Just a moment..."). Chronicle
+    /// cannot pass that check and does not try to: it stops sending requests for <see cref="HumanCheckHold"/> and says so, instead of
+    /// reporting a wrong password.</summary>
+    public bool HumanCheckActive => DateTime.UtcNow < _humanCheckUntilUtc;
 
     public FanEditAuthService(HttpClient http, System.Net.CookieContainer cookies, FanEditRateLimiter limiter)
     {
@@ -30,10 +40,18 @@ internal sealed class FanEditAuthService
     {
         IsSessionEstablished = false;
 
+        // A human check was shown a short while ago: send nothing more until the hold is over.
+        if (HumanCheckActive) return false;
+
         // Step 1: fetch login page to extract _wpnonce
         await _limiter.ThrottleAsync(ct);
         var nonceResp = await _http.GetAsync(LoginUrl, ct);
         var nonceHtml = await nonceResp.Content.ReadAsStringAsync(ct);
+        if (IsHumanCheck(nonceResp, nonceHtml))
+        {
+            _humanCheckUntilUtc = DateTime.UtcNow + HumanCheckHold;
+            return false;
+        }
         var nonce     = ExtractNonce(nonceHtml);
 
         // Step 2: POST credentials
@@ -67,6 +85,18 @@ internal sealed class FanEditAuthService
         // With AllowAutoRedirect=true the final RequestUri shows where we ended up.
         var finalUrl = response.RequestMessage?.RequestUri?.ToString() ?? string.Empty;
         return finalUrl.Contains("wp-login.php", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>True when the answer is a bot-protection challenge page rather than the site's own: Cloudflare marks it with
+    /// <c>Cf-Mitigated: challenge</c> and serves "Just a moment..." (HTTP 403 or 503).</summary>
+    internal static bool IsHumanCheck(HttpResponseMessage response, string body)
+    {
+        if (response.Headers.TryGetValues("Cf-Mitigated", out var mitigated) &&
+            mitigated.Any(v => v.Contains("challenge", StringComparison.OrdinalIgnoreCase)))
+            return true;
+        var blocked = response.StatusCode is System.Net.HttpStatusCode.Forbidden or System.Net.HttpStatusCode.ServiceUnavailable;
+        return blocked && (body.Contains("Just a moment", StringComparison.OrdinalIgnoreCase) ||
+                           body.Contains("challenge-platform", StringComparison.OrdinalIgnoreCase));
     }
 
     private static string? ExtractNonce(string html)
