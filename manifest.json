@@ -1,7 +1,7 @@
 {
   "plugin_id":             "chronicle.plugin.fanedit",
   "name":                  "FanEdit",
-  "version":               "1.0.4",
+  "version":               "1.1.0",
   "author":                "Chronicle Contributors",
   "description":           "Fetches fanedit metadata from the Internet Fan Edit Database (fanedit.org). Requires a registered fanedit.org account. Please use responsibly — a minimum 1-second delay between requests is enforced.",
   "min_chronicle_version": "0.1.0",
@@ -34,6 +34,14 @@
         "title":   "Re-sync all fan edit metadata?",
         "message": "This will re-fetch IFDB metadata for every fan edit in your library. fanedit.org is a small community site — each request has a minimum 1-second delay. On a large library this will take a very long time. Please use this sparingly."
       }
+    }
+  ],
+  "rating_sources": [
+    {
+      "key":          "ifdb",
+      "display_name": "IFDb",
+      "plain_rating": true,
+      "scale":        10
     }
   ]
 }
