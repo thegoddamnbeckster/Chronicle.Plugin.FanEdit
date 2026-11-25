@@ -581,6 +581,12 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
             ["numberOfAdditions"] = entry.NumberOfAdditions,
             ["ifdbRatingRaw"]     = entry.IfdbRatingRaw,
             ["ifdbRatingCount"]   = entry.IfdbRatingCount,
+            ["editorRating"]      = entry.EditorRating,
+            ["editorRatingCount"] = entry.EditorRatingCount,
+            ["userRating"]        = entry.UserRating,
+            ["userRatingCount"]   = entry.UserRatingCount,
+            // Chronicle's ratings contract: the two scores stay apart, each out of 10 with its review count.
+            ["ratings"]           = FanEditRatings(entry),
             ["ifdbAwards"]        = entry.IfdbAwards,
             ["ifdbId"]            = entry.IfdbId,
             ["ifdbUrl"]           = url,
@@ -604,5 +610,16 @@ public sealed class FanEditMetadataProvider : IMetadataProvider
                 .Select(u => new AdditionalImage { Url = u, Type = "Screenshot" })
                 .ToList(),
         };
+    }
+
+    /// <summary>The Trusted Reviewers' and the users' scores as separate contract entries (variants "reviewers" and "users"); none when absent.</summary>
+    internal static List<Dictionary<string, object?>> FanEditRatings(FanEditEntry entry)
+    {
+        var list = new List<Dictionary<string, object?>>();
+        if (entry.EditorRating is { } e)
+            list.Add(new() { ["key"] = "ifdb", ["variant"] = "reviewers", ["value"] = e, ["scale"] = 10, ["votes"] = entry.EditorRatingCount });
+        if (entry.UserRating is { } u)
+            list.Add(new() { ["key"] = "ifdb", ["variant"] = "users", ["value"] = u, ["scale"] = 10, ["votes"] = entry.UserRatingCount });
+        return list;
     }
 }

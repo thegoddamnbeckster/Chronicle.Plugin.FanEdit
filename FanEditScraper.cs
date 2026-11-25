@@ -396,40 +396,31 @@ internal sealed class FanEditScraper
 
     private static void ParseRating(HtmlDocument doc, FanEditEntry entry)
     {
-        // JReviews renders overall rating in the first jrRatingValue cell of the ratings table.
-        // The first row is always "Overall rating". We also look for itemprop="ratingValue".
-        var itempropNode = doc.DocumentNode.SelectSingleNode("//*[@itemprop='ratingValue']");
-        if (itempropNode is not null)
+        // The header carries two separate scores: the Trusted Reviewers' ("jrOverallEditor", "9.9 (5)") and the users' ("jrOverallUser",
+        // "10.0 (42)"), each out of 10. They are different populations and are kept apart; `Rating` is the users' score (the larger
+        // population), else the reviewers'.
+        (entry.EditorRating, entry.EditorRatingCount) = ParseOverall(doc, "jrOverallEditor");
+        (entry.UserRating, entry.UserRatingCount) = ParseOverall(doc, "jrOverallUser");
+        if (entry.UserRating is not null || entry.EditorRating is not null)
         {
-            var ratingText = itempropNode.InnerText.Trim();
-            if (double.TryParse(ratingText,
-                System.Globalization.NumberStyles.Any,
-                System.Globalization.CultureInfo.InvariantCulture, out var rv))
-            {
-                entry.Rating        = rv;
-                entry.IfdbRatingRaw = ratingText;
-                // Count votes from "(N)" pattern next to the rating in the first row
-                var countNode = itempropNode.ParentNode?.SelectSingleNode(
-                    "following-sibling::*[contains(@class,'jrRatingValue')]");
-                var countM = Regex.Match(countNode?.InnerText ?? "", @"\((\d+)\)");
-                if (countM.Success) entry.IfdbRatingCount = int.Parse(countM.Groups[1].Value);
-                return;
-            }
+            var useUser = entry.UserRating is not null;
+            entry.Rating          = useUser ? entry.UserRating : entry.EditorRating;
+            entry.IfdbRatingCount = useUser ? entry.UserRatingCount : entry.EditorRatingCount;
+            entry.IfdbRatingRaw   = (useUser ? entry.UserRating : entry.EditorRating)!.Value.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
+            return;
         }
+        // No header block: the page's other rating markup does not say whose score it is, so nothing is reported rather than a guess.
+    }
 
-        // Fallback: look for any jrRatingValue containing a decimal number
-        var ratingNode = doc.DocumentNode.SelectSingleNode(
-            "//*[contains(@class,'jrRatingValue') and contains(@class,'fwd-table-cell')]");
-        if (ratingNode is null) return;
-
-        var m = _ratingRegex.Match(ratingNode.InnerText);
-        if (!m.Success) return;
-
-        entry.IfdbRatingRaw   = m.Groups[1].Value;
-        entry.IfdbRatingCount = int.TryParse(m.Groups[2].Value, out var rc) ? rc : null;
-        entry.Rating          = double.TryParse(m.Groups[1].Value,
-            System.Globalization.NumberStyles.Any,
-            System.Globalization.CultureInfo.InvariantCulture, out var rv2) ? rv2 : null;
+    /// <summary>One header score: the number and the "(N)" review count beside it, or nothing when the block or number is absent.</summary>
+    private static (double? Value, int? Count) ParseOverall(HtmlDocument doc, string blockClass)
+    {
+        var node = doc.DocumentNode.SelectSingleNode($"//*[contains(@class,'{blockClass}')]//*[contains(@class,'jrRatingValue')]");
+        if (node is null) return (null, null);
+        var m = Regex.Match(HtmlEntity.DeEntitize(node.InnerText), @"(\d+(?:\.\d+)?)\s*(?:\(\s*(\d+)\s*\))?");
+        if (!m.Success || !double.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v)
+            || v is <= 0 or > 10) return (null, null);
+        return (v, m.Groups[2].Success && int.TryParse(m.Groups[2].Value, out var c) ? c : null);
     }
 
     // ── Post body overview (fallback only) ───────────────────────────────────

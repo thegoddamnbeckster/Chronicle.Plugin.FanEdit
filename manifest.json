@@ -1,7 +1,7 @@
 {
   "plugin_id":             "chronicle.plugin.fanedit",
   "name":                  "FanEdit",
-  "version":               "1.1.0",
+  "version":               "1.2.0",
   "author":                "Chronicle Contributors",
   "description":           "Fetches fanedit metadata from the Internet Fan Edit Database (fanedit.org). Requires a registered fanedit.org account. Please use responsibly — a minimum 1-second delay between requests is enforced.",
   "min_chronicle_version": "0.1.0",
@@ -42,6 +42,20 @@
       "display_name": "IFDb",
       "plain_rating": true,
       "scale":        10
+    },
+    {
+      "key":          "ifdb",
+      "variant":      "reviewers",
+      "display_name": "IFDb",
+      "scale":        10,
+      "label":        "Trusted Reviewers"
+    },
+    {
+      "key":          "ifdb",
+      "variant":      "users",
+      "display_name": "IFDb",
+      "scale":        10,
+      "label":        "Users"
     }
   ]
 }

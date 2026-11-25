@@ -37,6 +37,12 @@ internal sealed class FanEditEntry
     // Reception
     public string?  IfdbRatingRaw       { get; set; }
     public int?     IfdbRatingCount     { get; set; }
+    /// <summary>The Trusted Reviewers' overall score (out of 10) and how many reviews it rests on.</summary>
+    public double?  EditorRating        { get; set; }
+    public int?     EditorRatingCount   { get; set; }
+    /// <summary>The users' overall score (out of 10) and how many reviews it rests on.</summary>
+    public double?  UserRating          { get; set; }
+    public int?     UserRatingCount     { get; set; }
     public List<string> IfdbAwards      { get; set; } = [];
 
     // Publishing
